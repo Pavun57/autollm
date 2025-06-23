@@ -211,7 +211,7 @@ export default function WaitlistForm() {
               onValueChange={(value) => handleSelectChange(value, "aiExperience")}
               disabled={isLoading}
             >
-              <SelectTrigger className={`h-12 text-lg border-indigo-200 focus:border-indigo-500`}>
+              <SelectTrigger className={`h-12 border-indigo-200 focus:border-indigo-500`}>
                 <SelectValue placeholder="Your experience with AI" />
               </SelectTrigger>
               <SelectContent>

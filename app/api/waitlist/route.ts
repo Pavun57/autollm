@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const docId = await addToWaitlist(validatedData)
 
     // Send welcome email via Resend
-    await sendWelcomeEmail(validatedData.email, validatedData.name)
+    // await sendWelcomeEmail(validatedData.email, validatedData.name)
 
     return NextResponse.json(
       {

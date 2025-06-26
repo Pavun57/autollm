@@ -1,21 +1,145 @@
-import { initializeApp, getApps, cert } from "firebase-admin/app"
-import { getFirestore } from "firebase-admin/firestore"
+// Firebase Client SDK for client-side auth
+import { initializeApp, FirebaseApp } from "firebase/app"
+import { 
+  getAuth, 
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  Auth
+} from "firebase/auth"
+import { getFirestore, Firestore } from "firebase/firestore"
 
-// Initialize Firebase Admin SDK
-if (!getApps().length) {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+// Config for client-side Firebase
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
 
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: privateKey,
-    }),
-  })
+// Check if we have the required config
+const hasValidConfig = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+// Log Firebase configuration status
+console.log("Firebase configuration status:", {
+  hasApiKey: Boolean(firebaseConfig.apiKey),
+  hasAuthDomain: Boolean(firebaseConfig.authDomain),
+  hasProjectId: Boolean(firebaseConfig.projectId),
+  hasAppId: Boolean(firebaseConfig.appId),
+  hasValidConfig,
+  projectId: firebaseConfig.projectId // Log the actual project ID for debugging
+});
+
+// Initialize client-side Firebase only if we have valid config
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+
+try {
+  if (hasValidConfig) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    console.log("Firebase initialized successfully");
+  } else {
+    console.error("Firebase initialization failed: Missing required configuration");
+    if (!firebaseConfig.apiKey) console.error("Missing NEXT_PUBLIC_FIREBASE_API_KEY");
+    if (!firebaseConfig.projectId) console.error("Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+  }
+} catch (error) {
+  console.error("Error initializing Firebase:", error);
 }
 
-const db = getFirestore()
+export { auth, db };
 
+// Auth providers setup
+export const googleProvider = new GoogleAuthProvider();
+export const signInWithGoogle = () => {
+  if (!auth) throw new Error("Firebase auth not initialized");
+  return signInWithPopup(auth, googleProvider);
+};
+
+// Email link authentication
+export const actionCodeSettings = {
+  url: process.env.NEXT_PUBLIC_EMAIL_SIGNIN_URL || 'http://localhost:3000/auth/email-signin',
+  handleCodeInApp: true,
+};
+
+export const sendEmailSignInLink = async (email: string) => {
+  if (!auth) throw new Error("Firebase auth not initialized");
+  await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+  localStorage.setItem('emailForSignIn', email);
+  return true;
+};
+
+export const handleEmailSignIn = async () => {
+  if (!auth) throw new Error("Firebase auth not initialized");
+  if (isSignInWithEmailLink(auth, window.location.href)) {
+    const email = localStorage.getItem('emailForSignIn');
+    if (!email) {
+      // Handle case where no email is stored
+      throw new Error('No email found for sign-in');
+    }
+    
+    try {
+      await signInWithEmailLink(auth, email, window.location.href);
+      localStorage.removeItem('emailForSignIn');
+      return true;
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  return false;
+};
+
+// DB Schema Interfaces
+export interface User {
+  uid: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  plan: 'free' | 'pro';
+  usage: {
+    period: {
+      start: Date;
+      end: Date;
+    };
+    promptsUsed: number;
+    promptsLimit: number;
+  };
+  stripeCustomerId?: string;
+  createdAt: Date;
+}
+
+export interface Conversation {
+  id: string;
+  userId: string;
+  title: string;
+  lastMessage: string;
+  updatedAt: Date;
+  createdAt: Date;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  model?: string;
+  timestamp: Date;
+  metadata?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    classification?: string;
+  };
+}
+
+// Existing waitlist functionality
 export interface WaitlistEntry {
   name: string
   email: string
@@ -25,63 +149,4 @@ export interface WaitlistEntry {
   aiExperience?: string
   timestamp: Date
   product: string
-}
-
-export async function checkEmailExists(email: string): Promise<boolean> {
-  try {
-    const snapshot = await db
-      .collection("autollm-waitlist")
-      .where("email", "==", email)
-      .limit(1)
-      .get()
-
-    return !snapshot.empty
-  } catch (error) {
-    console.error("Error checking if email exists:", error)
-    throw new Error("Failed to check if email exists")
-  }
-}
-
-export async function addToWaitlist(data: Omit<WaitlistEntry, "timestamp" | "product">): Promise<string> {
-  try {
-    const waitlistEntry: WaitlistEntry = {
-      ...data,
-      timestamp: new Date(),
-      product: "AutoLLM",
-    }
-
-    const docRef = await db.collection("autollm-waitlist").add(waitlistEntry)
-    console.log("Added to AutoLLM waitlist with ID:", docRef.id)
-
-    return docRef.id
-  } catch (error) {
-    console.error("Error adding to AutoLLM waitlist:", error)
-    throw new Error("Failed to add to AutoLLM waitlist")
-  }
-}
-
-export async function getWaitlistEntries(): Promise<WaitlistEntry[]> {
-  try {
-    const snapshot = await db.collection("autollm-waitlist").orderBy("timestamp", "desc").get()
-    const entries: WaitlistEntry[] = []
-
-    snapshot.forEach((doc) => {
-      const data = doc.data()
-      entries.push({
-        name: data.name,
-        email: data.email,
-        company: data.company || "",
-        role: data.role || "",
-        useCase: data.useCase,
-        aiExperience: data.aiExperience,
-        timestamp: data.timestamp.toDate(),
-        product: data.product,
-      })
-    })
-
-    return entries
-  } catch (error) {
-    console.error("Error getting AutoLLM waitlist entries:", error)
-    throw new Error("Failed to get AutoLLM waitlist entries")
-  }
-}
+} 

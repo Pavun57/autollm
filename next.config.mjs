@@ -9,6 +9,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  reactStrictMode: false,
+  // Suppress webpack logs
+  webpack: (config, { isServer }) => {
+    config.infrastructureLogging = {
+      level: 'error',
+    };
+    return config;
+  },
 }
 
 export default nextConfig

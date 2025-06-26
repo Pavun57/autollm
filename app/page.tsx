@@ -1,286 +1,198 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle, Zap, Brain, Target, Shield, ArrowRight, Code, FileText, BarChart3 } from "lucide-react"
+import { CheckCircle, Zap, Brain, Target, Shield, ArrowRight, Code, FileText, BarChart3, RocketIcon, Sparkles, MessageSquare } from "lucide-react"
 import Link from "next/link"
 import WaitlistForm from "@/components/WaitlistForm"
 
-export default function LandingPage() {
+export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+    <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <header className="border-b border-indigo-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <Brain className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                AutoLLM
-              </span>
-            </div>
-            <nav className="hidden md:flex space-x-8">
-              <Link href="#features" className="text-gray-600 hover:text-indigo-600 transition-colors">
-                Features
+      <header className="border-b">
+        <div className="container flex items-center justify-between h-14">
+          <div className="font-bold text-xl">AI SaaS</div>
+          <nav>
+            <Button variant="ghost" asChild>
+              <Link href="/auth/login">Sign In</Link>
+            </Button>
+          </nav>
+        </div>
+      </header>
+      
+      {/* Hero section */}
+      <section className="py-20 lg:py-32">
+        <div className="container flex flex-col items-center text-center space-y-8">
+          <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">
+            Now in beta - get early access
+          </div>
+          <h1 className="font-bold text-4xl lg:text-6xl max-w-3xl">
+            Get the right AI model for every prompt
+          </h1>
+          <p className="max-w-[42rem] text-muted-foreground text-xl">
+            Our intelligent routing system automatically selects the best AI model
+            for your specific query - saving you money and delivering better results.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Button size="lg" asChild>
+              <Link href="/auth/login">
+                Get Started <Sparkles className="ml-2 h-4 w-4" />
               </Link>
-              <Link href="#how-it-works" className="text-gray-600 hover:text-indigo-600 transition-colors">
-                How It Works
-              </Link>
-            </nav>
-            <Button 
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-              asChild
-            >
-              <Link href="#waitlist">
-                Join Waitlist
-              </Link>
+            </Button>
+            <Button size="lg" variant="outline">
+              Learn More
             </Button>
           </div>
         </div>
-      </header>
-
-      {/* Hero Section */}
-      <section className="py-20 sm:py-32">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-4xl mx-auto">
-            <Badge className="mb-6 bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
-              🤖 AI-Powered Model Routing - Join the Waitlist
-            </Badge>
-            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
-              <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
-                The Smartest
-              </span>
-              <br />
-              <span className="text-gray-900">AI Assistant</span>
-            </h1>
-            <p className="text-xl sm:text-2xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              AutoLLM automatically chooses the best language model (GPT-4, Claude, Gemini) for your specific task,
-              delivering the most intelligent response every time.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-lg px-8 py-6 rounded-xl shadow-lg hover:shadow-xl transition-all"
-                asChild
-              >
-                <Link href="#waitlist">
-                  Join the Waitlist
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Link>
+      </section>
+      
+      {/* Features */}
+      <section className="py-20 bg-muted">
+        <div className="container">
+          <h2 className="text-3xl font-bold text-center mb-12">
+            Powerful AI, Simple Interface
+          </h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-card p-6 rounded-lg">
+              <div className="p-2 bg-primary/10 w-fit rounded-lg mb-4">
+                <RocketIcon className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Smart Model Selection</h3>
+              <p className="text-muted-foreground">
+                Automatically routes your prompt to the best AI model for the task.
+              </p>
+            </div>
+            <div className="bg-card p-6 rounded-lg">
+              <div className="p-2 bg-primary/10 w-fit rounded-lg mb-4">
+                <Zap className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Cost Efficient</h3>
+              <p className="text-muted-foreground">
+                Only use powerful (expensive) models when needed, saving you money.
+              </p>
+            </div>
+            <div className="bg-card p-6 rounded-lg">
+              <div className="p-2 bg-primary/10 w-fit rounded-lg mb-4">
+                <MessageSquare className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Conversation Memory</h3>
+              <p className="text-muted-foreground">
+                Maintains context across model switches for coherent conversations.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Pricing */}
+      <section className="py-20">
+        <div className="container">
+          <h2 className="text-3xl font-bold text-center mb-4">
+            Simple, Transparent Pricing
+          </h2>
+          <p className="text-center text-muted-foreground max-w-2xl mx-auto mb-12">
+            Start for free, upgrade when you need more capacity. No hidden costs.
+          </p>
+          
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Free plan */}
+            <div className="border rounded-lg p-8">
+              <div className="mb-4 text-muted-foreground font-medium">FREE</div>
+              <h3 className="text-4xl font-bold mb-2">$0</h3>
+              <p className="text-muted-foreground mb-6">For casual users</p>
+              <ul className="space-y-2 mb-6">
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  10 prompts per day
+                </li>
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Smart model routing
+                </li>
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Conversation history
+                </li>
+              </ul>
+              <Button className="w-full" variant="outline" asChild>
+                <Link href="/auth/login">Get Started</Link>
               </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-lg px-8 py-6 rounded-xl"
-              >
-                See How It Works
+            </div>
+            
+            {/* Pro plan */}
+            <div className="border border-primary rounded-lg p-8 shadow-sm">
+              <div className="mb-4 text-primary font-medium">PRO</div>
+              <h3 className="text-4xl font-bold mb-2">$19</h3>
+              <p className="text-muted-foreground mb-6">Per month</p>
+              <ul className="space-y-2 mb-6">
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  100 prompts per month
+                </li>
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Priority access to newer models
+                </li>
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Export conversation history
+                </li>
+                <li className="flex items-center">
+                  <svg className="mr-2 h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Email support
+                </li>
+              </ul>
+              <Button className="w-full" asChild>
+                <Link href="/auth/login">Upgrade to Pro</Link>
               </Button>
             </div>
-            <div className="mt-12 flex items-center justify-center space-x-6 text-sm text-gray-500">
-              <div className="flex items-center space-x-1">
-                <Brain className="w-4 h-4 text-indigo-500" />
-                <span>Smart Routing</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Zap className="w-4 h-4 text-yellow-500" />
-                <span>Lightning Fast</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Target className="w-4 h-4 text-green-500" />
-                <span>Best Results</span>
-              </div>
-            </div>
           </div>
         </div>
       </section>
-
-      {/* About Section */}
-      <section id="about" className="py-20 bg-white">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">Why AutoLLM?</h2>
-            <p className="text-lg text-gray-600 mb-12">
-              Stop wasting time choosing between different AI models. AutoLLM analyzes your task and automatically
-              routes it to the most capable language model, whether that's GPT-4 for reasoning, Claude for analysis, or
-              Gemini for creative tasks.
-            </p>
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Brain className="w-8 h-8 text-indigo-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Intelligent Routing</h3>
-                <p className="text-gray-600">
-                  Our AI analyzes your prompt and automatically selects the best model for optimal results.
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Target className="w-8 h-8 text-indigo-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Best-in-Class Results</h3>
-                <p className="text-gray-600">Get superior responses by leveraging each model's unique strengths.</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Zap className="w-8 h-8 text-indigo-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Seamless Experience</h3>
-                <p className="text-gray-600">
-                  One interface, multiple models. No more switching between different AI tools.
-                </p>
-              </div>
-            </div>
-          </div>
+      
+      {/* Join waitlist */}
+      <section className="py-20 bg-muted">
+        <div className="container max-w-xl">
+          <h2 className="text-3xl font-bold text-center mb-4">
+            Join Our Waitlist
+          </h2>
+          <p className="text-center text-muted-foreground mb-8">
+            We're rolling out access gradually. Sign up to be notified when it's your turn.
+          </p>
+          <WaitlistForm />
         </div>
       </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-20 bg-gradient-to-br from-indigo-50 to-purple-50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Powerful Features</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              AutoLLM combines the best of all worlds, giving you access to multiple AI models through one intelligent
-              interface.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Brain,
-                title: "Smart Model Selection",
-                description:
-                  "Automatically routes your task to GPT-4, Claude, Gemini, or other top models based on task type.",
-              },
-              {
-                icon: Code,
-                title: "Code Generation",
-                description: "Optimized routing for programming tasks, using the best coding-focused models available.",
-              },
-              {
-                icon: FileText,
-                title: "Content Writing",
-                description: "Perfect model selection for creative writing, copywriting, and content generation tasks.",
-              },
-              {
-                icon: BarChart3,
-                title: "Data Analysis",
-                description: "Intelligent routing to models that excel at analytical thinking and data interpretation.",
-              },
-              {
-                icon: Zap,
-                title: "Lightning Fast",
-                description: "Optimized API calls and caching ensure you get responses as quickly as possible.",
-              },
-              {
-                icon: Shield,
-                title: "Enterprise Security",
-                description: "Your data is encrypted and secure, with enterprise-grade privacy protection.",
-              },
-            ].map((feature, index) => (
-              <Card key={index} className="border-indigo-100 hover:border-indigo-200 transition-colors hover:shadow-lg">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-purple-200 rounded-xl flex items-center justify-center mb-4">
-                    <feature.icon className="w-6 h-6 text-indigo-600" />
-                  </div>
-                  <CardTitle className="text-gray-900">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-gray-600">{feature.description}</CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section id="how-it-works" className="py-20 bg-white">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">How AutoLLM Works</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Our intelligent routing system analyzes your request and selects the optimal AI model in milliseconds.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {[
-              {
-                step: "01",
-                title: "Analyze Your Task",
-                description:
-                  "Our AI analyzes your prompt to understand the task type: coding, writing, analysis, or creative work.",
-              },
-              {
-                step: "02",
-                title: "Route to Best Model",
-                description:
-                  "Automatically selects the optimal model (GPT-4, Claude, Gemini) based on task requirements and model strengths.",
-              },
-              {
-                step: "03",
-                title: "Deliver Smart Response",
-                description:
-                  "Returns the highest quality response by leveraging each model's unique capabilities and expertise.",
-              },
-            ].map((step, index) => (
-              <div key={index} className="text-center relative">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white font-bold text-lg">
-                  {step.step}
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">{step.title}</h3>
-                <p className="text-gray-600">{step.description}</p>
-                {index < 2 && (
-                  <ArrowRight className="hidden md:block absolute top-8 -right-4 w-6 h-6 text-indigo-300" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section removed */}
-
-      {/* Waitlist Section */}
-      <section id="waitlist" className="py-20 bg-white">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Join the AutoLLM Waitlist</h2>
-            <p className="text-lg text-gray-600 mb-8">
-              Be among the first to experience intelligent AI model routing. Get early access and help shape the future
-              of AI assistance.
-            </p>
-            <WaitlistForm />
-          </div>
-        </div>
-      </section>
-
+      
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center space-x-2 mb-4 md:mb-0">
-              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <Brain className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold">AutoLLM</span>
-            </div>
-            <div className="flex space-x-6 text-sm text-gray-400">
-              <Link href="#" className="hover:text-white transition-colors">
-                Privacy
-              </Link>
-              <Link href="#" className="hover:text-white transition-colors">
-                Terms
-              </Link>
-              <Link href="#" className="hover:text-white transition-colors">
-                Contact
-              </Link>
-            </div>
+      <footer className="border-t py-8">
+        <div className="container flex flex-col md:flex-row justify-between items-center">
+          <div className="text-sm text-muted-foreground">
+            © {new Date().getFullYear()} AI SaaS. All rights reserved.
           </div>
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
-            <p>&copy; 2024 AutoLLM. All rights reserved. Intelligent AI routing for everyone.</p>
+          <div className="flex space-x-6 mt-4 md:mt-0">
+            <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              Terms
+            </Link>
+            <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              Privacy
+            </Link>
+            <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">
+              Contact
+            </Link>
           </div>
         </div>
       </footer>

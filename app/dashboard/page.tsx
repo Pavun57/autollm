@@ -5,92 +5,97 @@ import { useRouter } from "next/navigation";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { VercelV0Chat } from "@/components/ui/v0-ai-chat";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   useEffect(() => {
-    // Create a new chat and redirect to it
-    const createAndRedirect = async () => {
-      console.log("Dashboard page loaded, creating new conversation...");
-      
+    // Check authentication but don't create conversation automatically
+    const checkAuth = () => {
       if (!auth) {
         console.error("Auth is not initialized");
-        setError("Authentication service not available");
         router.push("/auth/login");
-        setIsLoading(false);
         return;
       }
       
       const user = auth.currentUser;
       if (!user) {
         console.error("No authenticated user found");
-        setError("Please sign in to continue");
         router.push("/auth/login");
-        setIsLoading(false);
         return;
       }
       
       console.log("User authenticated:", user.uid);
-      
-      if (!db) {
-        console.error("Firestore DB is not initialized");
-        setError("Database connection not available");
-        toast({
-          title: "Error",
-          description: "Database connection not available. Please try again later.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        console.log("Creating new conversation for user:", user.uid);
-        
-        const docRef = await addDoc(collection(db, "conversations"), {
-          userId: user.uid,
-          title: "New Conversation",
-          lastMessage: "",
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        });
-        
-        console.log("Created conversation with ID:", docRef.id);
-        router.push(`/dashboard/chat/${docRef.id}`);
-      } catch (error) {
-        console.error("Error creating new conversation:", error);
-        setError("Failed to create a new conversation");
-        toast({
-          title: "Error",
-          description: "Failed to create a new conversation. Please try again.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      }
     };
 
-    createAndRedirect();
-  }, [router, toast]);
+    checkAuth();
+  }, [router]);
+
+  const handleSendMessage = async (message: string) => {
+    if (!auth || !db) {
+      toast({
+        title: "Error",
+        description: "Service not available. Please try again later.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
+
+    setIsCreatingChat(true);
+
+    try {
+      console.log("Creating new conversation for user:", user.uid);
+      
+      // Create new conversation
+      const docRef = await addDoc(collection(db, "conversations"), {
+        userId: user.uid,
+        title: message.length > 50 ? message.substring(0, 50) + "..." : message,
+        lastMessage: message,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+      
+      console.log("Created conversation with ID:", docRef.id);
+      
+      // Redirect to the new chat with the initial message
+      const chatUrl = `/dashboard/chat/${docRef.id}?initialMessage=${encodeURIComponent(message)}`;
+      console.log("Navigating to:", chatUrl);
+      
+      // Try both approaches for better compatibility
+      try {
+        await router.push(chatUrl);
+        console.log("Router.push successful");
+      } catch (routerError) {
+        console.log("Router.push failed, using window.location:", routerError);
+        window.location.href = chatUrl;
+      }
+    } catch (error) {
+      console.error("Error creating new conversation:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create a new conversation. Please try again.",
+        variant: "destructive",
+      });
+      setIsCreatingChat(false);
+    }
+  };
 
   return (
     <div className="flex items-center justify-center h-full">
-      {isLoading ? (
-        <div className="animate-pulse">Creating a new chat...</div>
-      ) : error ? (
-        <div className="text-center">
-          <p className="text-red-500 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md"
-          >
-            Try Again
-          </button>
-        </div>
-      ) : null}
+      <VercelV0Chat 
+        onSendMessage={handleSendMessage}
+        isLoading={isCreatingChat}
+      />
     </div>
   );
 } 

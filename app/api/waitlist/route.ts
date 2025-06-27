@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         { status: 201 },
       )
     }
-    
+
     // Check if email already exists
     const emailExists = await checkEmailExists(email);
     if (emailExists) {
@@ -41,13 +41,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
-    
+
     // Store in Firestore
     await db.collection("waitlist").add({
       email,
       createdAt: new Date(),
     })
-    
+
     // Return success
     return NextResponse.json(
       { success: true, message: "Added to waitlist successfully" },
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     )
   } catch (error: any) {
     console.error("Error adding to waitlist:", error)
-    
+
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: error.status || 500 }

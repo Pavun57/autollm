@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { createCheckoutSession, PLANS } from "@/lib/stripe";
+import { PLANS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,10 +83,28 @@ export default function SubscriptionPage() {
     setCheckoutLoading(true);
     
     try {
-      const { sessionId } = await createCheckoutSession(
-        user.uid,
-        PLANS.PRO.stripePriceId!
-      );
+      // Get Firebase ID token for authentication
+      const idToken = await user.getIdToken();
+      
+      // Call server-side API endpoint
+      const response = await fetch('/api/subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: 'create-checkout-session',
+          priceId: PLANS.PRO.stripePriceId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create checkout session');
+      }
+
+      const { sessionId } = await response.json();
       
       // Redirect to Stripe Checkout
       const stripeJs = (window as any).Stripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);

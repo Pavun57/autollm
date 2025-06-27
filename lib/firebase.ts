@@ -9,7 +9,7 @@ import {
   signInWithEmailLink,
   Auth
 } from "firebase/auth"
-import { getFirestore, Firestore } from "firebase/firestore"
+import { getFirestore, Firestore, doc, getDoc, setDoc } from "firebase/firestore"
 
 // Config for client-side Firebase
 const firebaseConfig = {
@@ -55,6 +55,55 @@ try {
 }
 
 export { auth, db };
+
+// Create or get user document with default values
+export async function createOrGetUser(userId: string, userEmail?: string): Promise<any> {
+  if (!db) throw new Error("Database not initialized");
+  
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  
+  if (!userDoc.exists()) {
+    // Create default user document
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
+    const newUser = {
+      uid: userId,
+      email: userEmail || '',
+      plan: 'free' as const,
+      usage: {
+        period: {
+          start: now,
+          end: tomorrow,
+        },
+        promptsUsed: 0,
+        promptsLimit: 10, // FREE tier limit
+      },
+      createdAt: now,
+    };
+    
+    await setDoc(doc(db, 'users', userId), newUser);
+    console.log(`Created new user document for ${userId}`);
+    return newUser;
+  }
+  
+  return userDoc.data();
+}
+
+// Set up auth state listener to create user documents
+if (auth) {
+  auth.onAuthStateChanged(async (user) => {
+    if (user && db) {
+      try {
+        // Create or get user document when user signs in
+        await createOrGetUser(user.uid, user.email || undefined);
+        console.log(`User document ensured for: ${user.uid}`);
+      } catch (error) {
+        console.error('Error ensuring user document:', error);
+      }
+    }
+  });
+}
 
 // Auth providers setup
 export const googleProvider = new GoogleAuthProvider();
@@ -112,6 +161,7 @@ export interface User {
     promptsUsed: number;
     promptsLimit: number;
   };
+  memory?: string; // Stores user personal details for better responses
   stripeCustomerId?: string;
   createdAt: Date;
 }
@@ -149,4 +199,28 @@ export interface WaitlistEntry {
   aiExperience?: string
   timestamp: Date
   product: string
-} 
+}
+
+// Memory management functions
+export async function updateUserMemory(userId: string, memory: string): Promise<void> {
+  if (!db) throw new Error("Database not initialized");
+  
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { memory }, { merge: true });
+  console.log(`Updated memory for user ${userId}`);
+}
+
+export async function clearUserMemory(userId: string): Promise<void> {
+  if (!db) throw new Error("Database not initialized");
+  
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { memory: null }, { merge: true });
+  console.log(`Cleared memory for user ${userId}`);
+}
+
+export async function getUserMemory(userId: string): Promise<string | null> {
+  if (!db) throw new Error("Database not initialized");
+  
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  return userDoc.exists() ? userDoc.data()?.memory || null : null;
+}

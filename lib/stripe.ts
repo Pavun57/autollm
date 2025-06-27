@@ -1,44 +1,74 @@
 import Stripe from 'stripe';
-import { db } from './firebase';
-import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
-import { increment as firestoreIncrement } from 'firebase/firestore';
+import { db, auth } from './firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+import { PLANS } from './constants';
 
 // Initialize Stripe with the secret key
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2023-10-16',
+  apiVersion: '2024-04-10',
 });
 
-// Plan configuration
-export const PLANS = {
-  FREE: {
-    name: 'Free',
-    limit: 10,
-    period: 'day',
-    price: 0,
-  },
-  PRO: {
-    name: 'Pro',
-    limit: 100,
-    period: 'month',
-    price: 9.99,
-    stripePriceId: process.env.STRIPE_PRO_PRICE_ID,
-  },
-};
+// Helper function to create or get user document (Admin SDK version)
+async function createOrGetUser(userId: string, email?: string) {
+  if (!db) throw new Error("Database not initialized");
+  
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+  
+  if (!userDoc.exists) {
+    // Get user info from Firebase Auth if email not provided
+    let userEmail = email;
+    if (!userEmail && auth) {
+      try {
+        const userRecord = await auth.getUser(userId);
+        userEmail = userRecord.email;
+      } catch (error) {
+        console.warn("Could not get user email from Auth:", error);
+      }
+    }
+    
+    // Create new user document with default free tier settings
+    const newUserData = {
+      email: userEmail || '',
+      plan: 'free',
+      usage: {
+        promptsUsed: 0,
+        promptsLimit: PLANS.FREE.limit,
+        period: {
+          start: new Date(),
+          end: new Date(Date.now() + 24 * 60 * 60 * 1000), // +1 day for free tier
+        },
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    await userRef.set(newUserData);
+    return newUserData;
+  }
+  
+  return userDoc.data()!;
+}
 
 // Create a Stripe checkout session
 export async function createCheckoutSession(userId: string, priceId: string) {
+  if (!db) throw new Error("Database not initialized");
+  
   // Get the user for the metadata
-  const userDoc = await getDoc(doc(db, 'users', userId));
-  if (!userDoc.exists()) {
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+  
+  if (!userDoc.exists) {
     throw new Error('User not found');
   }
 
-  let stripeCustomerId = userDoc.data().stripeCustomerId;
+  const userData = userDoc.data()!;
+  let stripeCustomerId = userData.stripeCustomerId;
 
   // If user doesn't have a Stripe customer ID, create one
   if (!stripeCustomerId) {
     const customer = await stripe.customers.create({
-      email: userDoc.data().email,
+      email: userData.email,
       metadata: {
         userId,
       },
@@ -47,7 +77,7 @@ export async function createCheckoutSession(userId: string, priceId: string) {
     stripeCustomerId = customer.id;
     
     // Update user with Stripe customer ID
-    await updateDoc(doc(db, 'users', userId), {
+    await userRef.update({
       stripeCustomerId,
     });
   }
@@ -78,6 +108,8 @@ export async function updateUserSubscription(
   userId: string,
   subscription: Stripe.Subscription
 ) {
+  if (!db) throw new Error("Database not initialized");
+  
   const planId = subscription.items.data[0].price.id;
   const isPro = planId === process.env.STRIPE_PRO_PRICE_ID;
   const period = {
@@ -86,7 +118,8 @@ export async function updateUserSubscription(
   };
   
   // Update user with subscription info
-  await updateDoc(doc(db, 'users', userId), {
+  const userRef = db.collection('users').doc(userId);
+  await userRef.update({
     plan: isPro ? 'pro' : 'free',
     'usage.period': period,
     'usage.promptsLimit': isPro ? PLANS.PRO.limit : PLANS.FREE.limit,
@@ -94,7 +127,8 @@ export async function updateUserSubscription(
   });
   
   // Store subscription in subscriptions collection
-  await setDoc(doc(db, 'subscriptions', subscription.id), {
+  const subscriptionRef = db.collection('subscriptions').doc(subscription.id);
+  await subscriptionRef.set({
     userId,
     status: subscription.status,
     planId,
@@ -106,10 +140,15 @@ export async function updateUserSubscription(
 
 // Reset daily usage for free tier users
 export async function resetDailyUsage(userId: string) {
-  const userDoc = await getDoc(doc(db, 'users', userId));
-  if (!userDoc.exists()) return;
+  if (!db) return;
+  
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+  
+  if (!userDoc.exists) return;
   
   const userData = userDoc.data();
+  if (!userData) return;
   
   // Only reset for free tier users
   if (userData.plan !== 'free') return;
@@ -118,7 +157,7 @@ export async function resetDailyUsage(userId: string) {
   const today = new Date();
   
   if (lastReset) {
-    const lastResetDate = new Date(lastReset);
+    const lastResetDate = lastReset.toDate ? lastReset.toDate() : new Date(lastReset);
     
     // Check if it's a new day (compare date only, not time)
     if (
@@ -131,7 +170,7 @@ export async function resetDailyUsage(userId: string) {
   }
   
   // Reset daily usage
-  await updateDoc(doc(db, 'users', userId), {
+  await userRef.update({
     'usage.promptsUsed': 0,
     'usage.period.start': today,
     'usage.period.end': new Date(today.getTime() + 24 * 60 * 60 * 1000), // +1 day
@@ -140,20 +179,23 @@ export async function resetDailyUsage(userId: string) {
 
 // Check if user has reached their usage limit
 export async function checkUsageLimit(userId: string): Promise<boolean> {
-  const userDoc = await getDoc(doc(db, 'users', userId));
-  if (!userDoc.exists()) {
-    throw new Error('User not found');
-  }
+  if (!db) throw new Error("Database not initialized");
   
-  const userData = userDoc.data();
+  // Try to get user document, create if it doesn't exist
+  const userData = await createOrGetUser(userId);
   
   // For free tier users, first check if we need to reset daily usage
   if (userData.plan === 'free') {
     await resetDailyUsage(userId);
     
     // Fetch updated user data after potential reset
-    const updatedUserDoc = await getDoc(doc(db, 'users', userId));
+    const userRef = db.collection('users').doc(userId);
+    const updatedUserDoc = await userRef.get();
     const updatedUserData = updatedUserDoc.data();
+    
+    if (!updatedUserData) {
+      throw new Error("User data not found after reset");
+    }
     
     return updatedUserData.usage.promptsUsed >= updatedUserData.usage.promptsLimit;
   } else {
@@ -164,7 +206,10 @@ export async function checkUsageLimit(userId: string): Promise<boolean> {
 
 // Increment usage count for user
 export async function incrementUserUsage(userId: string): Promise<void> {
-  await updateDoc(doc(db, 'users', userId), {
-    'usage.promptsUsed': firestoreIncrement(1),
+  if (!db) throw new Error("Database not initialized");
+  
+  const userRef = db.collection('users').doc(userId);
+  await userRef.update({
+    'usage.promptsUsed': FieldValue.increment(1),
   });
 } 

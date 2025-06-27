@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
 import { db, auth, Message } from "@/lib/firebase";
-import { processChat, processChatStream } from "@/lib/openrouter";
+import { classifyPrompt, getModelForPrompt } from "@/lib/openrouter";
 import { addMessageToMemory, createMemoryFromMessages } from "@/lib/langchain";
-import { checkUsageLimit, incrementUserUsage } from "@/lib/stripe";
 import { useToast } from "@/hooks/use-toast";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
@@ -13,16 +12,55 @@ import { Sparkles, RefreshCw } from "lucide-react";
 
 interface ChatInterfaceProps {
   conversationId: string;
+  initialMessage?: string | null;
 }
 
-export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
+export default function ChatInterface({ conversationId, initialMessage }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const [currentClassification, setCurrentClassification] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialMessageSentRef = useRef(false);
   const { toast } = useToast();
   const router = useRouter();
+
+  // Helper function to ensure user document exists
+  const ensureUserExists = async (userId: string, userEmail?: string) => {
+    if (!db) return;
+    
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (!userDoc.exists()) {
+        // Create default user document
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        
+        const newUser = {
+          uid: userId,
+          email: userEmail || '',
+          plan: 'free',
+          usage: {
+            period: {
+              start: now,
+              end: tomorrow,
+            },
+            promptsUsed: 0,
+            promptsLimit: 10, // FREE tier limit
+          },
+          createdAt: now,
+        };
+        
+        await setDoc(doc(db, 'users', userId), newUser);
+        console.log(`Created new user document for ${userId}`);
+      }
+    } catch (error) {
+      console.error("Error ensuring user exists:", error);
+    }
+  };
 
   // Listen to messages from this conversation
   useEffect(() => {
@@ -87,30 +125,7 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Check usage limits
-  useEffect(() => {
-    const checkLimits = async () => {
-      const user = auth?.currentUser;
-      if (!user) return;
 
-      try {
-        const hasReachedLimit = await checkUsageLimit(user.uid);
-        setLimitReached(hasReachedLimit);
-        
-        if (hasReachedLimit) {
-          toast({
-            title: "Usage Limit Reached",
-            description: "You've reached your plan's usage limit. Please upgrade to continue.",
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        console.error("Error checking usage limits:", error);
-      }
-    };
-
-    checkLimits();
-  }, [toast]);
 
   // Handle message submission
   const handleSubmit = async (content: string) => {
@@ -132,22 +147,11 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
     }
     
     try {
-      // Check usage limit again
-      const hasReachedLimit = await checkUsageLimit(user.uid);
-      if (hasReachedLimit) {
-        setLimitReached(true);
-        toast({
-          title: "Usage Limit Reached",
-          description: "You've reached your plan's usage limit. Please upgrade to continue.",
-          variant: "destructive",
-        });
-        return;
-      }
+      // Ensure user document exists
+      await ensureUserExists(user.uid, user.email || undefined);
       
       setIsLoading(true);
       setError(null);
-      
-      console.log(`Sending message in conversation: ${conversationId}`);
       
       // Add user message to Firestore
       const userMessage: Omit<Message, "id"> = {
@@ -162,8 +166,6 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
         userMessage
       );
       
-      console.log(`Added user message with ID: ${userDocRef.id}`);
-      
       // Create placeholder for assistant message
       const assistantDocRef = await addDoc(
         collection(db, "conversations", conversationId, "messages"),
@@ -175,8 +177,6 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
         }
       );
       
-      console.log(`Added placeholder assistant message with ID: ${assistantDocRef.id}`);
-      
       // Update conversation title and last message
       await updateDoc(doc(db, "conversations", conversationId), {
         title: content.slice(0, 30) + (content.length > 30 ? "..." : ""),
@@ -184,46 +184,76 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
         updatedAt: new Date(),
       });
       
-      console.log(`Updated conversation metadata`);
-      
-      // Process with OpenRouter and get response
+      // Prepare messages for API call
       const allMessages = [...messages, { ...userMessage, id: userDocRef.id }];
       
+      // Predict which model will be used for UI display
+      const classification = classifyPrompt(content);
+      const predictedModel = getModelForPrompt(content);
+      setCurrentModel(predictedModel);
+      setCurrentClassification(classification);
+      
+      // Get Firebase ID token for authentication
+      const idToken = await user.getIdToken();
+      
+      // Call server-side API endpoint
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          conversationId,
+          messages: allMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+            id: msg.id,
+            model: msg.model,
+            metadata: msg.metadata
+          })),
+          stream: false // Use non-streaming for simplicity
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Handle usage limit error specifically
+        if (response.status === 429) {
+          setLimitReached(true);
+          toast({
+            title: "Usage Limit Reached",
+            description: "You've reached your plan's usage limit. Please upgrade to continue.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        throw new Error(errorData.error || 'Failed to get response from API');
+      }
+
+      const result = await response.json();
+      
+      // Update current model info for UI display
+      setCurrentModel(result.model);
+      setCurrentClassification(result.classification);
+      
+      // Update the assistant message with the final response
+      await updateDoc(doc(db, "conversations", conversationId, "messages", assistantDocRef.id), {
+        content: result.content,
+        model: result.model,
+        metadata: {
+          classification: result.classification,
+        },
+      });
+
       // Initialize memory if needed
       const memory = createMemoryFromMessages(allMessages);
       
-      // Process the message and get AI response
-      console.log("Calling OpenRouter API...");
-      const { stream, model, classification } = await processChatStream(allMessages);
-      
-      console.log(`Got response stream from model: ${model}, classification: ${classification}`);
-      
-      // Create a variable to collect the full response
-      let fullResponse = "";
-      
-      // Process the stream
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        fullResponse += content;
-        
-        // Update the assistant message as we receive chunks
-        await updateDoc(doc(db, "conversations", conversationId, "messages", assistantDocRef.id), {
-          content: fullResponse,
-          model,
-          metadata: {
-            classification,
-          },
-        });
-      }
-      
-      console.log("Stream completed, final response length:", fullResponse.length);
-      
       // Update memory with the full conversation
       addMessageToMemory(memory, "user", content);
-      addMessageToMemory(memory, "assistant", fullResponse);
-      
-      // Increment usage count
-      await incrementUserUsage(user.uid);
+      addMessageToMemory(memory, "assistant", result.content);
       
     } catch (error) {
       console.error("Error processing message:", error);
@@ -235,7 +265,160 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
       });
     } finally {
       setIsLoading(false);
+      setCurrentModel(null);
+      setCurrentClassification(null);
     }
+  };
+
+  // Send initial message if provided
+  useEffect(() => {
+    console.log("Initial message effect:", { 
+      initialMessage, 
+      messagesLength: messages.length, 
+      isLoading, 
+      alreadySent: initialMessageSentRef.current 
+    });
+    
+    if (initialMessage && messages.length === 0 && !isLoading && !initialMessageSentRef.current) {
+      console.log("Sending initial message:", initialMessage);
+      // Small delay to ensure component is fully mounted
+      const timer = setTimeout(() => {
+        initialMessageSentRef.current = true;
+        handleSubmit(initialMessage);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [initialMessage, messages.length, isLoading, handleSubmit]);
+
+  // Handle message editing
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!db) return;
+    
+    try {
+      await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
+        content: newContent,
+        editedAt: new Date(),
+      });
+      
+      toast({
+        title: "Message updated",
+        description: "Your message has been updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error updating message:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update message. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle message regeneration
+  const handleRegenerateMessage = async (messageId: string) => {
+    if (!db || isLoading) return;
+    
+    const user = auth?.currentUser;
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // Find the message to regenerate and get conversation context
+      const messageToRegenerate = messages.find(msg => msg.id === messageId);
+      if (!messageToRegenerate || messageToRegenerate.role !== "assistant") return;
+      
+      // Get all messages up to this point (excluding the message being regenerated)
+      const contextMessages = messages.filter(msg => 
+        msg.timestamp <= messageToRegenerate.timestamp && msg.id !== messageId
+      );
+      
+      // Update the message to show loading state
+      await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
+        content: "...",
+      });
+      
+      // Get Firebase ID token for authentication
+      const idToken = await user.getIdToken();
+      
+      // Call server-side API endpoint
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          conversationId,
+          messages: contextMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+            id: msg.id,
+            model: msg.model,
+            metadata: msg.metadata
+          })),
+          stream: false
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to regenerate response');
+      }
+
+      const result = await response.json();
+      
+      // Update the message with the new response
+      await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
+        content: result.content,
+        model: result.model,
+        metadata: {
+          classification: result.classification,
+        },
+        regeneratedAt: new Date(),
+      });
+      
+      toast({
+        title: "Response regenerated",
+        description: "A new response has been generated.",
+      });
+      
+    } catch (error) {
+      console.error("Error regenerating message:", error);
+      toast({
+        title: "Error",
+        description: "Failed to regenerate response. Please try again.",
+        variant: "destructive",
+      });
+      
+      // Restore original content if regeneration failed
+      const originalMessage = messages.find(msg => msg.id === messageId);
+      if (originalMessage) {
+        await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
+          content: originalMessage.content,
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle like/dislike (you can extend this to save to database)
+  const handleLikeMessage = (messageId: string) => {
+    // Could save to database for analytics
+    toast({
+      title: "Feedback recorded",
+      description: "Thank you for your feedback!",
+    });
+  };
+
+  const handleDislikeMessage = (messageId: string) => {
+    // Could save to database for analytics
+    toast({
+      title: "Feedback recorded",
+      description: "Thank you for your feedback! We'll work to improve.",
+    });
   };
 
   // Retry loading messages
@@ -260,7 +443,14 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
           </div>
         ) : messages.length > 0 ? (
           messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage 
+              key={message.id} 
+              message={message}
+              onEdit={handleEditMessage}
+              onRegenerate={handleRegenerateMessage}
+              onLike={handleLikeMessage}
+              onDislike={handleDislikeMessage}
+            />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -275,6 +465,27 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
       
+      {/* Model indicator */}
+      {isLoading && currentModel && (
+        <div className="px-4 py-2 border-t bg-muted/50">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+            <span>
+              Thinking with {currentModel.includes("qwen3-30b-a3b:free") ? "Qwen3 30B" :
+                           currentModel.includes("qwen3-14b:free") ? "Qwen3 14B" :
+                           currentModel.includes("deepseek-r1:free") ? "DeepSeek R1" :
+                           currentModel}
+              {currentModel.includes(":free") && <span className="text-green-600 ml-1">FREE</span>}
+            </span>
+            {currentClassification && (
+              <span className="text-xs bg-muted px-2 py-1 rounded">
+                {currentClassification}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      
       {limitReached ? (
         <div className="p-4 border-t bg-muted">
           <div className="flex flex-col items-center justify-center text-center p-4">
@@ -288,7 +499,13 @@ export default function ChatInterface({ conversationId }: ChatInterfaceProps) {
           </div>
         </div>
       ) : (
-        <ChatInput onSubmit={handleSubmit} isLoading={isLoading} />
+        <ChatInput
+          onSubmit={handleSubmit}
+          disabled={limitReached}
+          isLoading={isLoading}
+          currentModel={currentModel}
+          currentClassification={currentClassification}
+        />
       )}
     </div>
   );

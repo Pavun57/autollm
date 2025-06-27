@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import ChatInterface from "@/components/chat/ChatInterface";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 export default function ChatPage({ params }: { params: { id: string } }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
+  const [initialMessage, setInitialMessage] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { id } = params;
 
   // Verify the user has access to this conversation
@@ -20,6 +22,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       if (!user || !db) {
         router.push("/auth/login");
         return;
+      }
+
+      // Get initial message from URL params
+      const initialMsg = searchParams.get('initialMessage');
+      console.log("Initial message from URL:", initialMsg);
+      if (initialMsg) {
+        const decodedMsg = decodeURIComponent(initialMsg);
+        console.log("Decoded initial message:", decodedMsg);
+        setInitialMessage(decodedMsg);
       }
 
       try {
@@ -47,7 +58,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     };
 
     checkAccess();
-  }, [id, router]);
+  }, [id, router, searchParams]);
 
   if (isLoading) {
     return (
@@ -72,7 +83,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         </button>
         <h1 className="text-sm font-medium">Chat</h1>
       </div>
-      <ChatInterface conversationId={id} />
+      <ChatInterface conversationId={id} initialMessage={initialMessage} />
     </>
   );
 } 

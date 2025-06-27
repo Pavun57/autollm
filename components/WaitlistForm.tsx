@@ -13,7 +13,7 @@ export default function WaitlistForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email || !email.includes("@")) {
       toast({
         title: "Invalid Email",
@@ -22,9 +22,9 @@ export default function WaitlistForm() {
       })
       return
     }
-    
+
     setIsLoading(true)
-    
+
     try {
       // Submit to API route
       const response = await fetch("/api/waitlist", {
@@ -34,7 +34,7 @@ export default function WaitlistForm() {
         },
         body: JSON.stringify({ email }),
       })
-      
+
       if (!response.ok) {
         throw new Error("Failed to submit email")
       }
@@ -73,26 +73,26 @@ export default function WaitlistForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3">
-        <Input
-          type="email"
+            <Input
+              type="email"
           placeholder="Enter your email"
           className="h-12"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          disabled={isLoading}
+              disabled={isLoading}
           required
         />
-        <Button 
-          type="submit" 
-          disabled={isLoading} 
+          <Button
+            type="submit"
+            disabled={isLoading}
           className="h-12"
-        >
+          >
           {isLoading ? "Joining..." : "Join Waitlist"}
-        </Button>
-      </div>
+          </Button>
+          </div>
       <p className="text-xs text-center text-muted-foreground">
         We'll notify you when it's your turn. No spam, ever.
-      </p>
+        </p>
     </form>
   )
 }

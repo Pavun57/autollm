@@ -1,105 +1,156 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { auth, db } from "@/lib/firebase-admin";
-import { processChat } from "@/lib/openrouter";
+import { processChatStream, classifyPrompt, getModelForPrompt } from "@/lib/openrouter";
 import { checkUsageLimit, incrementUserUsage } from "@/lib/stripe";
 
-export const dynamic = 'force-dynamic';
-
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
+    const { conversationId, messages, stream = false } = await request.json();
+    
+    // Get the authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const idToken = authHeader.split("Bearer ")[1];
+    
     // Check if Firebase Admin is initialized
     if (!auth || !db) {
-      console.warn("Firebase Admin not initialized, skipping authentication");
+      console.warn("Firebase Admin not initialized");
       return NextResponse.json(
         { error: "Firebase Admin not initialized. Set up your environment variables." },
         { status: 500 }
       );
     }
     
-    // Get the session token from cookies
-    const sessionCookie = cookies().get("__session")?.value;
+    // Verify the ID token
+    const decodedToken = await auth.verifyIdToken(idToken);
+    const userId = decodedToken.uid;
     
-    if (!sessionCookie) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
+    console.log(`Processing chat request for user: ${userId}, conversation: ${conversationId}`);
     
-    // Verify the session
-    const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
-    const uid = decodedClaims.uid;
-    
-    // Check if the user exists
-    const user = await auth.getUser(uid);
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-    
-    // Check if they've reached their usage limit
-    const hasReachedLimit = await checkUsageLimit(uid);
+    // Check usage limit
+    const hasReachedLimit = await checkUsageLimit(userId);
     if (hasReachedLimit) {
       return NextResponse.json(
         { error: "Usage limit reached" },
-        { status: 403 }
+        { status: 429 }
       );
     }
     
-    // Parse the request body
-    const body = await req.json();
-    const { conversationId, messages } = body;
-    
-    if (!conversationId || !messages || !Array.isArray(messages)) {
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400 }
+    // Get the last user message to classify and determine model
+    const lastUserMessage = messages.filter((msg: any) => msg.role === 'user').pop();
+    if (!lastUserMessage) {
+      return NextResponse.json({ error: "No user message found" }, { status: 400 });
+    }
+
+    // Check for memory commands first
+    const userContent = lastUserMessage.content.toLowerCase().trim();
+    if (userContent.includes("forget") && (userContent.includes("memory") || userContent.includes("everything") || userContent.includes("all"))) {
+      // Clear user memory
+      await db.collection('users').doc(userId).set(
+        { memory: null },
+        { merge: true }
       );
+      
+      return NextResponse.json({
+        content: "I've cleared my memory of our previous conversations and personal details. We can start fresh!",
+        model: "system",
+        classification: "memory-command",
+        conversationId
+      });
+    }
+
+    // Get current user memory for context
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userMemory = userDoc.exists ? userDoc.data()?.memory : null;
+
+    // Detect if user is sharing personal information
+    const personalInfoPatterns = [
+      /my name is (\w+)/i,
+      /call me (\w+)/i,
+      /i'm (\w+)/i,
+      /i am (\w+)/i,
+      /i work at (.+)/i,
+      /i work as (.+)/i,
+      /i'm a (.+)/i,
+      /i am a (.+)/i,
+      /my job is (.+)/i,
+      /i live in (.+)/i,
+      /i'm from (.+)/i,
+      /i am from (.+)/i
+    ];
+
+    let detectedInfo = "";
+    for (const pattern of personalInfoPatterns) {
+      const match = lastUserMessage.content.match(pattern);
+      if (match) {
+        detectedInfo += `${match[0]}. `;
+      }
+    }
+
+    // Update memory if personal info detected
+    if (detectedInfo) {
+      const newMemory = userMemory ? `${userMemory} ${detectedInfo}` : detectedInfo;
+      await db.collection('users').doc(userId).set(
+        { memory: newMemory.trim() },
+        { merge: true }
+      );
+      console.log(`Updated memory for user ${userId}: ${detectedInfo}`);
+    }
+
+    // Add memory to messages for context if it exists
+    const contextMessages = [...messages];
+    if (userMemory || detectedInfo) {
+      const memoryContext = userMemory || detectedInfo;
+      contextMessages.unshift({
+        role: "system",
+        content: `User's personal context (use this to personalize responses): ${memoryContext}`
+      });
     }
     
-    // Process the chat request
-    const result = await processChat(messages);
-    const { content, model, classification } = result;
+    const classification = classifyPrompt(lastUserMessage.content);
+    const model = getModelForPrompt(lastUserMessage.content);
     
-    // Store the response in Firestore
-    const messagesCollection = db.collection("conversations").doc(conversationId).collection("messages");
-    const docRef = await messagesCollection.add({
-      role: "assistant",
-      content: content,
-      model,
-      metadata: {
-        classification,
-      },
-      timestamp: new Date(),
-    });
+    console.log(`Using model: ${model}, classification: ${classification}`);
     
-    // Update conversation metadata
-    await db.collection("conversations").doc(conversationId).update({
-      updatedAt: new Date(),
-    });
+    // Process with OpenRouter using context messages
+    const { stream: responseStream } = await processChatStream(contextMessages);
     
-    // Increment usage
-    await incrementUserUsage(uid);
+    // Collect the full response
+    let fullResponse = "";
+    for await (const chunk of responseStream) {
+      const content = chunk.choices[0]?.delta?.content || "";
+      fullResponse += content;
+    }
+    
+    console.log(`Generated response length: ${fullResponse.length}`);
+    
+    // Increment usage count
+    await incrementUserUsage(userId);
     
     // Return the response
     return NextResponse.json({
-      id: docRef.id,
-      role: "assistant",
-      content: content,
+      content: fullResponse,
       model,
-      metadata: {
-        classification,
-      },
+      classification,
+      conversationId
     });
-  } catch (error: any) {
+    
+  } catch (error) {
     console.error("Error in chat API:", error);
     
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: error.status || 500 }
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 } 

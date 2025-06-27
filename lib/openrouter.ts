@@ -2,7 +2,22 @@ import { OpenAI } from 'openai';
 import { Message } from './firebase';
 
 // Initialize OpenAI client with OpenRouter base URL
-const apiKey = process.env.OPENROUTER_API_KEY || "";
+// Check both server-side and client-side environment variables
+const apiKey = process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || "";
+
+console.log("OpenRouter API Key status:", {
+  hasKey: Boolean(apiKey),
+  keyLength: apiKey ? apiKey.length : 0,
+  keyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : 'Not found',
+  isClientSide: typeof window !== 'undefined',
+  usingPublicKey: Boolean(process.env.NEXT_PUBLIC_OPENROUTER_API_KEY)
+});
+
+// Warning about using public API key
+if (process.env.NEXT_PUBLIC_OPENROUTER_API_KEY && typeof window !== 'undefined') {
+  console.warn("⚠️  WARNING: Using NEXT_PUBLIC_OPENROUTER_API_KEY exposes your API key to the client. This is only acceptable for development or free API keys.");
+}
+
 const openai = apiKey ? new OpenAI({
   apiKey,
   baseURL: "https://openrouter.ai/api/v1",
@@ -12,13 +27,13 @@ const openai = apiKey ? new OpenAI({
   },
 }) : null;
 
-// Model mappings by classification
+// Model mappings by classification - using FREE models only
 const MODEL_MAPPINGS = {
-  code: 'anthropic/claude-3-sonnet',
-  writing: 'openai/gpt-4-turbo',
-  reasoning: 'google/gemini-pro',
-  analysis: 'anthropic/claude-3-opus',
-  default: 'anthropic/claude-3-sonnet', // Fallback model
+  code: 'qwen/qwen3-30b-a3b:free', // Good for coding tasks
+  writing: 'qwen/qwen3-14b:free', // Good for writing tasks
+  reasoning: 'deepseek/deepseek-r1:free', // Excellent for reasoning
+  analysis: 'qwen/qwen3-30b-a3b:free', // Good for analysis
+  default: 'qwen/qwen3-14b:free', // Fallback model
 };
 
 // Simple keyword-based prompt classifier
@@ -62,12 +77,15 @@ export async function processChat(
 ): Promise<{ content: string; model: string; classification: string; usage: { promptTokens: number, completionTokens: number } }> {
   try {
     if (!openai) {
-      throw new Error("OpenRouter API key is missing");
+      console.error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
+      throw new Error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
     }
     
     // If a new prompt is provided, classify and add to history
     const classification = prompt ? classifyPrompt(prompt) : 'default';
     const modelId = MODEL_MAPPINGS[classification as keyof typeof MODEL_MAPPINGS];
+    
+    console.log(`Using model: ${modelId} for classification: ${classification}`);
     
     const messages = formatMessages(conversationHistory);
     
@@ -102,11 +120,14 @@ export async function processChatStream(
 ) {
   try {
     if (!openai) {
-      throw new Error("OpenRouter API key is missing");
+      console.error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
+      throw new Error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
     }
     
     const classification = prompt ? classifyPrompt(prompt) : 'default';
     const modelId = MODEL_MAPPINGS[classification as keyof typeof MODEL_MAPPINGS];
+    
+    console.log(`Using model: ${modelId} for classification: ${classification}`);
     
     const messages = formatMessages(conversationHistory);
     

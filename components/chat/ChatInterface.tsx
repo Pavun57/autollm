@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+'use client';
+
+import { useEffect, useRef, useState, useCallback } from "react";
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
 import { db, auth, Message } from "@/lib/firebase";
 import { classifyPrompt, getModelForPrompt } from "@/lib/openrouter";
@@ -9,6 +11,8 @@ import ChatInput from "./ChatInput";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/button";
 import { Sparkles, RefreshCw } from "lucide-react";
+import BYOKModal from "@/components/ui/BYOKModal";
+import { useBYOK } from "@/components/BYOKProvider";
 
 interface ChatInterfaceProps {
   conversationId: string;
@@ -16,6 +20,7 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ conversationId, initialMessage }: ChatInterfaceProps) {
+  // All hooks must be at the top level
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
@@ -26,110 +31,11 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
   const initialMessageSentRef = useRef(false);
   const { toast } = useToast();
   const router = useRouter();
-
-  // Helper function to ensure user document exists
-  const ensureUserExists = async (userId: string, userEmail?: string) => {
-    if (!db) return;
-    
-    try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      
-      if (!userDoc.exists()) {
-        // Create default user document
-        const now = new Date();
-        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-        
-        const newUser = {
-          uid: userId,
-          email: userEmail || '',
-          plan: 'free',
-          usage: {
-            period: {
-              start: now,
-              end: tomorrow,
-            },
-            promptsUsed: 0,
-            promptsLimit: 10, // FREE tier limit
-          },
-          createdAt: now,
-        };
-        
-        await setDoc(doc(db, 'users', userId), newUser);
-        console.log(`Created new user document for ${userId}`);
-      }
-    } catch (error) {
-      console.error("Error ensuring user exists:", error);
-    }
-  };
-
-  // Listen to messages from this conversation
-  useEffect(() => {
-    if (!conversationId) {
-      console.error("No conversation ID provided");
-      setError("No conversation ID provided");
-      return;
-    }
-
-    if (!db) {
-      console.error("Firestore DB is not initialized");
-      setError("Database connection not available");
-      return;
-    }
-
-    console.log(`Setting up message listener for conversation: ${conversationId}`);
-
-    try {
-      const q = query(
-        collection(db, "conversations", conversationId, "messages"),
-        orderBy("timestamp", "asc")
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        console.log(`Received ${snapshot.docs.length} messages for conversation ${conversationId}`);
-        const msgs: Message[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          msgs.push({
-            id: doc.id,
-            conversationId,
-            role: data.role,
-            content: data.content,
-            model: data.model,
-            timestamp: data.timestamp?.toDate(),
-            metadata: data.metadata,
-          });
-        });
-        
-        setMessages(msgs);
-        setError(null);
-      }, (error) => {
-        console.error("Error fetching messages:", error);
-        setError("Could not load messages. Please try again.");
-        toast({
-          title: "Error",
-          description: "Could not load messages. Please try again.",
-          variant: "destructive",
-        });
-      });
-
-      return () => unsubscribe();
-    } catch (err) {
-      console.error("Error setting up message listener:", err);
-      setError("Error setting up message listener");
-      return () => {};
-    }
-  }, [conversationId, toast]);
-
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-
+  const { apiKey } = useBYOK();
 
   // Handle message submission
-  const handleSubmit = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const handleSubmit = useCallback(async (content: string) => {
+    if (!content.trim() || isLoading || !apiKey) return;
     
     const user = auth?.currentUser;
     if (!user) {
@@ -202,6 +108,7 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
+          'x-openrouter-key': apiKey,
         },
         body: JSON.stringify({
           conversationId,
@@ -268,56 +175,11 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
       setCurrentModel(null);
       setCurrentClassification(null);
     }
-  };
-
-  // Send initial message if provided
-  useEffect(() => {
-    console.log("Initial message effect:", { 
-      initialMessage, 
-      messagesLength: messages.length, 
-      isLoading, 
-      alreadySent: initialMessageSentRef.current 
-    });
-    
-    if (initialMessage && messages.length === 0 && !isLoading && !initialMessageSentRef.current) {
-      console.log("Sending initial message:", initialMessage);
-      // Small delay to ensure component is fully mounted
-      const timer = setTimeout(() => {
-        initialMessageSentRef.current = true;
-        handleSubmit(initialMessage);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [initialMessage, messages.length, isLoading, handleSubmit]);
-
-  // Handle message editing
-  const handleEditMessage = async (messageId: string, newContent: string) => {
-    if (!db) return;
-    
-    try {
-      await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
-        content: newContent,
-        editedAt: new Date(),
-      });
-      
-      toast({
-        title: "Message updated",
-        description: "Your message has been updated successfully.",
-      });
-    } catch (error) {
-      console.error("Error updating message:", error);
-      toast({
-        title: "Error",
-        description: "Failed to update message. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+  }, [conversationId, isLoading, apiKey, router, toast, messages]);
 
   // Handle message regeneration
-  const handleRegenerateMessage = async (messageId: string) => {
-    if (!db || isLoading) return;
+  const handleRegenerateMessage = useCallback(async (messageId: string) => {
+    if (!db || isLoading || !apiKey) return;
     
     const user = auth?.currentUser;
     if (!user) return;
@@ -348,6 +210,7 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
+          'x-openrouter-key': apiKey,
         },
         body: JSON.stringify({
           conversationId,
@@ -402,31 +265,130 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [conversationId, isLoading, apiKey, router, toast, messages]);
 
-  // Handle like/dislike (you can extend this to save to database)
-  const handleLikeMessage = (messageId: string) => {
-    // Could save to database for analytics
-    toast({
-      title: "Feedback recorded",
-      description: "Thank you for your feedback!",
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!db) return;
+    await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
+      content: newContent,
+      editedAt: new Date(),
     });
   };
 
-  const handleDislikeMessage = (messageId: string) => {
-    // Could save to database for analytics
-    toast({
-      title: "Feedback recorded",
-      description: "Thank you for your feedback! We'll work to improve.",
-    });
+  const handleLikeMessage = (messageId: string) => { /* Placeholder */ };
+  const handleDislikeMessage = (messageId: string) => { /* Placeholder */ };
+  const retryLoading = () => setError(null);
+
+  // Load initial messages for the conversation
+  useEffect(() => {
+    if (!conversationId) {
+      console.error("No conversation ID provided");
+      setError("No conversation ID provided");
+      return;
+    }
+
+    if (!db) {
+      console.error("Firestore DB is not initialized");
+      setError("Database connection not available");
+      return;
+    }
+
+    console.log(`Setting up message listener for conversation: ${conversationId}`);
+
+    try {
+      const q = query(
+        collection(db, "conversations", conversationId, "messages"),
+        orderBy("timestamp", "asc")
+      );
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        console.log(`Received ${snapshot.docs.length} messages for conversation ${conversationId}`);
+        const msgs: Message[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          msgs.push({
+            id: doc.id,
+            conversationId,
+            role: data.role,
+            content: data.content,
+            model: data.model,
+            timestamp: data.timestamp?.toDate(),
+            metadata: data.metadata,
+          });
+        });
+        
+        setMessages(msgs);
+        setError(null);
+      }, (error) => {
+        console.error("Error fetching messages:", error);
+        setError("Could not load messages. Please try again.");
+        toast({
+          title: "Error",
+          description: "Could not load messages. Please try again.",
+          variant: "destructive",
+        });
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.error("Error setting up message listener:", err);
+      setError("Error setting up message listener");
+      return () => {};
+    }
+  }, [conversationId, toast]);
+
+  // Scroll to bottom when new messages are added
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Send initial message if provided
+  useEffect(() => {
+    if (initialMessage && messages.length === 0 && !isLoading && !initialMessageSentRef.current) {
+      initialMessageSentRef.current = true;
+      handleSubmit(initialMessage);
+    }
+  }, [initialMessage, messages.length, isLoading, handleSubmit]);
+
+  // Helper function to ensure user document exists
+  const ensureUserExists = async (userId: string, userEmail?: string) => {
+    if (!db) return;
+    
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      
+      if (!userDoc.exists()) {
+        // Create default user document
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        
+        const newUser = {
+          uid: userId,
+          email: userEmail || '',
+          plan: 'free',
+          usage: {
+            period: {
+              start: now,
+              end: tomorrow,
+            },
+            promptsUsed: 0,
+            promptsLimit: 10, // FREE tier limit
+          },
+          createdAt: now,
+        };
+        
+        await setDoc(doc(db, 'users', userId), newUser);
+        console.log(`Created new user document for ${userId}`);
+      }
+    } catch (error) {
+      console.error("Error ensuring user exists:", error);
+    }
   };
 
-  // Retry loading messages
-  const retryLoading = () => {
-    setError(null);
-    setMessages([]);
-    // This will trigger the useEffect to reload messages
-  };
+  // Conditional return after all hooks are declared
+  if (!apiKey) {
+    return <BYOKModal open={true} />;
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -486,27 +448,14 @@ export default function ChatInterface({ conversationId, initialMessage }: ChatIn
         </div>
       )}
       
-      {limitReached ? (
-        <div className="p-4 border-t bg-muted">
-          <div className="flex flex-col items-center justify-center text-center p-4">
-            <h3 className="font-medium mb-2">Usage Limit Reached</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              You've used all your prompts for now. Upgrade to Pro for more.
-            </p>
-            <Button onClick={() => router.push("/settings/subscription")}>
-              Upgrade to Pro
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <ChatInput
-          onSubmit={handleSubmit}
-          disabled={limitReached}
-          isLoading={isLoading}
-          currentModel={currentModel}
-          currentClassification={currentClassification}
-        />
-      )}
+      {/* Limit reached and upgrade UI removed */}
+      <ChatInput
+        onSubmit={handleSubmit}
+        disabled={isLoading}
+        isLoading={isLoading}
+        currentModel={currentModel}
+        currentClassification={currentClassification}
+      />
     </div>
   );
 } 

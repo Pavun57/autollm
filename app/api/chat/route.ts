@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, db } from "@/lib/firebase-admin";
 import { processChatStream, classifyPrompt, getModelForPrompt } from "@/lib/openrouter";
-import { checkUsageLimit, incrementUserUsage } from "@/lib/stripe";
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,15 +29,6 @@ export async function POST(request: NextRequest) {
     const userId = decodedToken.uid;
     
     console.log(`Processing chat request for user: ${userId}, conversation: ${conversationId}`);
-    
-    // Check usage limit
-    const hasReachedLimit = await checkUsageLimit(userId);
-    if (hasReachedLimit) {
-      return NextResponse.json(
-        { error: "Usage limit reached" },
-        { status: 429 }
-      );
-    }
     
     // Get the last user message to classify and determine model
     const lastUserMessage = messages.filter((msg: any) => msg.role === 'user').pop();
@@ -115,8 +106,14 @@ export async function POST(request: NextRequest) {
     
     console.log(`Using model: ${model}, classification: ${classification}`);
     
-    // Process with OpenRouter using context messages
-    const { stream: responseStream } = await processChatStream(contextMessages);
+    // Get OpenRouter API key from header
+    const openrouterKey = request.headers.get("x-openrouter-key") || undefined;
+    if (!openrouterKey) {
+      return NextResponse.json({ error: "OpenRouter API key missing. Please provide your key in settings." }, { status: 400 });
+    }
+    
+    // Process with OpenRouter using context messages and user key
+    const { stream: responseStream } = await processChatStream(contextMessages, undefined, openrouterKey);
     
     // Collect the full response
     let fullResponse = "";
@@ -126,9 +123,6 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`Generated response length: ${fullResponse.length}`);
-    
-    // Increment usage count
-    await incrementUserUsage(userId);
     
     // Return the response
     return NextResponse.json({

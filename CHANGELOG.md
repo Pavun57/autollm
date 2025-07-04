@@ -41,6 +41,12 @@
   - Analysis tasks: Qwen/Qwen2.5-Coder-32B-Instruct (free)
 - **Improved error handling and user feedback**
 - **Enhanced security with proper server-side API authentication**
+- **Added BYOK (Bring Your Own Key) support for OpenRouter API key**
+  - Users are prompted to enter their OpenRouter API key after signup/login
+  - Key is stored only in browser (localStorage), never sent to server or database
+  - Settings page allows editing/removing the key
+  - All model calls use the user-supplied key, passed securely to backend
+  - Backend and OpenRouter logic refactored to require and use the user key
 
 ### Fixed
 - **Critical Node.js Module Compatibility Issue**: Fixed "Module not found: Can't resolve 'net'" error
@@ -146,4 +152,14 @@
 - Implement better error handling
 - Add user profile avatar upload
 - Create mobile-responsive versions of all components
-- Implement export functionality for chat history 
+- Implement export functionality for chat history
+
+### Removed
+- **Removed subscription model and all related Stripe logic**
+  - Deleted backend API routes for subscription and Stripe webhooks
+  - Removed all usage limit logic and plan/upgrade UI
+  - Cleaned up constants, Firestore rules, and navigation
+  - Deleted frontend subscription management page
+- **Removed resend mail logic, waitlist, and related UI/backend/frontend code**
+  - Deleted resend mail utility and all onboarding/waitlist logic
+  - Removed thank you page with email confirmation references 

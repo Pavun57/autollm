@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle, Zap, Brain, Target, Shield, ArrowRight, Code, FileText, BarChart3, RocketIcon, Sparkles, MessageSquare } from "lucide-react"
 import Link from "next/link"
-import WaitlistForm from "@/components/WaitlistForm"
 
 export default function HomePage() {
   return (
@@ -173,7 +172,6 @@ export default function HomePage() {
           <p className="text-center text-muted-foreground mb-8">
             We're rolling out access gradually. Sign up to be notified when it's your turn.
           </p>
-          <WaitlistForm />
         </div>
       </section>
       

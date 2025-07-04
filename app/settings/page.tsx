@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useBYOK } from "@/components/BYOKProvider";
 
 export default function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
@@ -19,6 +20,9 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isClearingMemory, setIsClearingMemory] = useState(false);
   const { toast } = useToast();
+  const { apiKey, setApiKey, removeApiKey } = useBYOK();
+  const [editingKey, setEditingKey] = useState(false);
+  const [keyInput, setKeyInput] = useState(apiKey || "");
 
   useEffect(() => {
     const user = auth?.currentUser;

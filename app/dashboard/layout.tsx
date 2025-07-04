@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase";
 import { Navbar } from "@/components/layout/Navbar";
 import Sidebar from "@/components/layout/Sidebar";
 import { useToast } from "@/hooks/use-toast";
+import { BYOKProvider } from '@/components/BYOKProvider';
 
 export default function DashboardLayout({
   children,
@@ -50,14 +51,16 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <Navbar />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
+    <BYOKProvider>
+      <div className="flex flex-col h-screen">
+        <Navbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-auto">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </BYOKProvider>
   );
 } 

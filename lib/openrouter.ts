@@ -73,13 +73,21 @@ function formatMessages(conversationHistory: Message[]) {
 // Main function to process a chat completion
 export async function processChat(
   conversationHistory: Message[],
-  prompt?: string
+  prompt?: string,
+  apiKey?: string
 ): Promise<{ content: string; model: string; classification: string; usage: { promptTokens: number, completionTokens: number } }> {
   try {
-    if (!openai) {
-      console.error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
-      throw new Error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
+    if (!apiKey) {
+      throw new Error("OpenRouter API key is missing. Please provide your key in settings.");
     }
+    const openai = new OpenAI({
+      apiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "AutoLLM AI App",
+      },
+    });
     
     // If a new prompt is provided, classify and add to history
     const classification = prompt ? classifyPrompt(prompt) : 'default';
@@ -116,13 +124,21 @@ export async function processChat(
 // Stream version for real-time responses
 export async function processChatStream(
   conversationHistory: Message[],
-  prompt?: string
+  prompt?: string,
+  apiKey?: string
 ) {
   try {
-    if (!openai) {
-      console.error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
-      throw new Error("OpenRouter API key is missing. Please set OPENROUTER_API_KEY environment variable.");
+    if (!apiKey) {
+      throw new Error("OpenRouter API key is missing. Please provide your key in settings.");
     }
+    const openai = new OpenAI({
+      apiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "AutoLLM AI App",
+      },
+    });
     
     const classification = prompt ? classifyPrompt(prompt) : 'default';
     const modelId = MODEL_MAPPINGS[classification as keyof typeof MODEL_MAPPINGS];

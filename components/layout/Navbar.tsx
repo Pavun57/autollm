@@ -13,16 +13,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ApiKeyManager } from "@/components/auth/ApiKeyManager";
 
 export function Navbar() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
 
   const handleSignOut = async () => {
     try {
       setIsLoading(true);
-      await signOut(auth);
+      await signOut(auth!);
       router.push("/auth/login");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -67,8 +68,8 @@ export function Navbar() {
               <DropdownMenuItem asChild>
                 <Link href="/settings">Settings</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/subscription">Subscription</Link>
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                  <ApiKeyManager />
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings/usage">Usage Stats</Link>

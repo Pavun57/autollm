@@ -46,7 +46,7 @@ Follow these steps to get AutoLLM running locally on your machine.
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/autollm.git
+git clone https://github.com/Pavun57/autollm
 cd autollm
 ```
 
